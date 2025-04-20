@@ -1,25 +1,27 @@
 const socket = io();
 let peerConnection;
 let localStream;
+let remoteStream;
 
 const config = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' }
+  ]
 };
 
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
 const status = document.getElementById('status');
 
-// Get media
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
   .then(stream => {
     localStream = stream;
     localVideo.srcObject = stream;
     socket.emit('joinRoom');
   })
-  .catch(err => {
-    alert('Allow camera and mic!');
-    console.error(err);
+  .catch(error => {
+    console.error('🎥 Error accessing media devices:', error);
+    status.innerText = 'Media access error.';
   });
 
 socket.on('waiting', () => {
@@ -27,41 +29,39 @@ socket.on('waiting', () => {
 });
 
 socket.on('matched', async ({ partnerId }) => {
-  status.innerText = 'Matched!';
-  createPeer();
-
-  localStream.getTracks().forEach(track => {
-    peerConnection.addTrack(track, localStream);
-  });
+  status.innerText = 'Matched with: ' + partnerId;
+  createPeerConnection();
+  localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
   const offer = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offer);
-  socket.emit('signal', { offer });
+  socket.emit('signal', { type: 'offer', offer });
 });
 
 socket.on('signal', async data => {
-  if (data.offer) {
-    createPeer();
-    localStream.getTracks().forEach(track => {
-      peerConnection.addTrack(track, localStream);
-    });
+  if (data.type === 'offer') {
+    createPeerConnection();
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
     const answer = await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answer);
-    socket.emit('signal', { answer });
-  }
+    socket.emit('signal', { type: 'answer', answer });
 
-  if (data.answer) {
+  } else if (data.type === 'answer') {
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-  }
 
-  if (data.candidate) {
-    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+  } else if (data.type === 'candidate') {
+    try {
+      await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+    } catch (e) {
+      console.error('Error adding ICE candidate:', e);
+    }
   }
 });
 
 socket.on('partnerDisconnected', () => {
-  status.innerText = 'Partner left. Click Next to find someone new.';
+  status.innerText = 'Your partner has left. Click "Next" to find another.';
   if (peerConnection) {
     peerConnection.close();
     peerConnection = null;
@@ -69,22 +69,24 @@ socket.on('partnerDisconnected', () => {
   remoteVideo.srcObject = null;
 });
 
-function createPeer() {
+function createPeerConnection() {
   if (peerConnection) {
     peerConnection.close();
+    peerConnection = null;
   }
 
   peerConnection = new RTCPeerConnection(config);
+  remoteStream = new MediaStream();
+  remoteVideo.srcObject = remoteStream;
 
   peerConnection.onicecandidate = event => {
     if (event.candidate) {
-      socket.emit('signal', { candidate: event.candidate });
+      socket.emit('signal', { type: 'candidate', candidate: event.candidate });
     }
   };
 
   peerConnection.ontrack = event => {
-    console.log('Remote track received');
-    remoteVideo.srcObject = event.streams[0];
+    remoteStream.addTrack(event.track);
   };
 }
 
@@ -93,8 +95,7 @@ function connectNextUser() {
     peerConnection.close();
     peerConnection = null;
   }
-
   remoteVideo.srcObject = null;
-  status.innerText = 'Searching for next user...';
+  status.innerText = 'Connecting to a new user...';
   socket.emit('nextUser');
 }
