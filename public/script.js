@@ -3,21 +3,14 @@ let peerConnection;
 let localStream;
 
 const config = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    {
-      urls: 'turn:relay.metered.ca:80', // Optional TURN server
-      username: 'openai',
-      credential: 'openai'
-    }
-  ]
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
 };
 
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
 const status = document.getElementById('status');
 
-// Get user camera and mic
+// Get user media
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
   .then(stream => {
     localStream = stream;
@@ -32,7 +25,11 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     socket.on('matched', async ({ partnerId }) => {
       status.innerText = 'Matched with a partner!';
       setupPeerConnection();
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+      // Must add tracks BEFORE creating offer
+      localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+      });
 
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
@@ -42,7 +39,11 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     socket.on('signal', async data => {
       if (data.offer) {
         setupPeerConnection();
-        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+        localStream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, localStream);
+        });
+
         await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
@@ -56,32 +57,29 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       if (data.candidate && peerConnection) {
         try {
           await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch (e) {
-          console.error('Error adding ICE candidate', e);
+        } catch (err) {
+          console.error('Error adding ICE candidate:', err);
         }
       }
     });
 
     socket.on('partnerDisconnected', () => {
-      status.innerText = 'Partner left. Click "Next" to find a new one.';
+      status.innerText = 'Partner disconnected. Click "Next" to connect again.';
       if (peerConnection) {
         peerConnection.close();
         peerConnection = null;
       }
       remoteVideo.srcObject = null;
     });
-
   })
-  .catch(error => {
-    console.error('Error accessing media devices:', error);
-    alert("Please allow access to camera and microphone.");
+  .catch(err => {
+    console.error('Media device error:', err);
+    alert('Please allow camera and mic permission.');
   });
 
-// Setup PeerConnection
 function setupPeerConnection() {
   if (peerConnection) {
     peerConnection.close();
-    peerConnection = null;
   }
 
   peerConnection = new RTCPeerConnection(config);
@@ -93,11 +91,14 @@ function setupPeerConnection() {
   };
 
   peerConnection.ontrack = event => {
-    remoteVideo.srcObject = event.streams[0];
+    console.log('Received remote stream');
+    // Multiple tracks may come, check for existing stream
+    if (!remoteVideo.srcObject) {
+      remoteVideo.srcObject = event.streams[0];
+    }
   };
 }
 
-// Next button logic
 function connectNextUser() {
   if (peerConnection) {
     peerConnection.close();
@@ -105,6 +106,6 @@ function connectNextUser() {
   }
 
   remoteVideo.srcObject = null;
-  status.innerText = 'Connecting to a new user...';
+  status.innerText = 'Searching for next user...';
   socket.emit('nextUser');
 }
