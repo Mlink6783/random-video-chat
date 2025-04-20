@@ -1,85 +1,79 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const path = require('path');
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files from the "public" directory
+app.use(express.static(path.join(__dirname, "public")));
 
-let waitingUser = null;
+const waitingUsers = new Set();
+const userPartners = new Map();
 
-io.on('connection', socket => {
-  console.log('✅ New user connected:', socket.id);
+io.on("connection", (socket) => {
+  console.log("User connected:", socket.id);
 
-  if (waitingUser && waitingUser.connected) {
-    const partner = waitingUser;
-    waitingUser = null;
+  socket.on("joinRoom", () => {
+    // Try to match with someone else in the waiting queue
+    let matched = false;
 
-    socket.partner = partner;
-    partner.partner = socket;
+    for (let otherId of waitingUsers) {
+      if (otherId !== socket.id) {
+        waitingUsers.delete(otherId);
 
-    console.log(`🔗 Paired: ${socket.id} <--> ${partner.id}`);
+        userPartners.set(socket.id, otherId);
+        userPartners.set(otherId, socket.id);
 
-    socket.emit('matched', { partnerId: partner.id });
-    partner.emit('matched', { partnerId: socket.id });
-  } else {
-    waitingUser = socket;
-    socket.emit('waiting');
-    console.log(`⏳ User ${socket.id} is waiting for a partner`);
-  }
+        socket.emit("matched", { partnerId: otherId });
+        io.to(otherId).emit("matched", { partnerId: socket.id });
 
-  socket.on('signal', data => {
-    if (socket.partner) {
-      console.log(`🔁 Relaying signal from ${socket.id} to ${socket.partner.id}`, data.type || '');
-      socket.partner.emit('signal', data);
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      waitingUsers.add(socket.id);
+      socket.emit("waiting");
     }
   });
 
-  socket.on('nextUser', () => {
-    console.log(`🔄 ${socket.id} clicked 'Next'`);
-
-    if (socket.partner) {
-      socket.partner.emit('partnerDisconnected');
-      socket.partner.partner = null;
+  socket.on("nextUser", () => {
+    const partnerId = userPartners.get(socket.id);
+    if (partnerId) {
+      io.to(partnerId).emit("partnerDisconnected");
+      userPartners.delete(partnerId);
+      userPartners.delete(socket.id);
     }
+    waitingUsers.delete(socket.id);
+    socket.emit("joinRoom");
+  });
 
-    socket.partner = null;
-
-    if (waitingUser === socket) {
-      waitingUser = null;
-    }
-
-    if (waitingUser && waitingUser.connected) {
-      const partner = waitingUser;
-      waitingUser = null;
-
-      socket.partner = partner;
-      partner.partner = socket;
-
-      socket.emit('matched', { partnerId: partner.id });
-      partner.emit('matched', { partnerId: socket.id });
-    } else {
-      waitingUser = socket;
-      socket.emit('waiting');
+  socket.on("signal", (data) => {
+    const partnerId = userPartners.get(socket.id);
+    if (partnerId) {
+      io.to(partnerId).emit("signal", data);
     }
   });
 
-  socket.on('disconnect', () => {
-    console.log('❌ User disconnected:', socket.id);
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
 
-    if (socket.partner) {
-      socket.partner.emit('partnerDisconnected');
-      socket.partner.partner = null;
+    const partnerId = userPartners.get(socket.id);
+    if (partnerId) {
+      io.to(partnerId).emit("partnerDisconnected");
+      userPartners.delete(partnerId);
     }
 
-    if (waitingUser === socket) {
-      waitingUser = null;
-    }
+    userPartners.delete(socket.id);
+    waitingUsers.delete(socket.id);
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});
