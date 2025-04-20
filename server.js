@@ -12,10 +12,47 @@ app.use(express.static(path.join(__dirname, 'public')));
 let waitingUser = null;
 
 io.on('connection', socket => {
-  console.log('User connected:', socket.id);
+  console.log('✅ New user connected:', socket.id);
 
-  socket.on('joinRoom', () => {
-    if (waitingUser) {
+  if (waitingUser && waitingUser.connected) {
+    const partner = waitingUser;
+    waitingUser = null;
+
+    socket.partner = partner;
+    partner.partner = socket;
+
+    console.log(`🔗 Paired: ${socket.id} <--> ${partner.id}`);
+
+    socket.emit('matched', { partnerId: partner.id });
+    partner.emit('matched', { partnerId: socket.id });
+  } else {
+    waitingUser = socket;
+    socket.emit('waiting');
+    console.log(`⏳ User ${socket.id} is waiting for a partner`);
+  }
+
+  socket.on('signal', data => {
+    if (socket.partner) {
+      console.log(`🔁 Relaying signal from ${socket.id} to ${socket.partner.id}`, data.type || '');
+      socket.partner.emit('signal', data);
+    }
+  });
+
+  socket.on('nextUser', () => {
+    console.log(`🔄 ${socket.id} clicked 'Next'`);
+
+    if (socket.partner) {
+      socket.partner.emit('partnerDisconnected');
+      socket.partner.partner = null;
+    }
+
+    socket.partner = null;
+
+    if (waitingUser === socket) {
+      waitingUser = null;
+    }
+
+    if (waitingUser && waitingUser.connected) {
       const partner = waitingUser;
       waitingUser = null;
 
@@ -30,38 +67,14 @@ io.on('connection', socket => {
     }
   });
 
-  socket.on('signal', data => {
-    if (socket.partner) {
-      socket.partner.emit('signal', data);
-    }
-  });
-
-  socket.on('nextUser', () => {
-    if (socket.partner) {
-      socket.partner.emit('partnerDisconnected');
-      socket.partner.partner = null;
-    }
-    socket.partner = null;
-    socket.emit('waiting');
-    if (waitingUser && waitingUser !== socket) {
-      const partner = waitingUser;
-      waitingUser = null;
-
-      socket.partner = partner;
-      partner.partner = socket;
-
-      socket.emit('matched', { partnerId: partner.id });
-      partner.emit('matched', { partnerId: socket.id });
-    } else {
-      waitingUser = socket;
-    }
-  });
-
   socket.on('disconnect', () => {
+    console.log('❌ User disconnected:', socket.id);
+
     if (socket.partner) {
       socket.partner.emit('partnerDisconnected');
       socket.partner.partner = null;
     }
+
     if (waitingUser === socket) {
       waitingUser = null;
     }
@@ -69,4 +82,4 @@ io.on('connection', socket => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
