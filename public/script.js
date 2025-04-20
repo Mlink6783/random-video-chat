@@ -3,13 +3,21 @@ let peerConnection;
 let localStream;
 
 const config = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    {
+      urls: 'turn:relay.metered.ca:80', // Optional TURN server
+      username: 'openai',
+      credential: 'openai'
+    }
+  ]
 };
 
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
 const status = document.getElementById('status');
 
+// Get user camera and mic
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
   .then(stream => {
     localStream = stream;
@@ -22,7 +30,7 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     });
 
     socket.on('matched', async ({ partnerId }) => {
-      status.innerText = 'Matched with: ' + partnerId;
+      status.innerText = 'Matched with a partner!';
       setupPeerConnection();
       localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
@@ -41,28 +49,35 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         socket.emit('signal', { answer });
       }
 
-      if (data.answer) {
+      if (data.answer && peerConnection) {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
       }
 
-      if (data.candidate) {
-        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+      if (data.candidate && peerConnection) {
+        try {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } catch (e) {
+          console.error('Error adding ICE candidate', e);
+        }
       }
     });
 
     socket.on('partnerDisconnected', () => {
-      status.innerText = 'Your partner has left. Click "Next" to find a new one.';
+      status.innerText = 'Partner left. Click "Next" to find a new one.';
       if (peerConnection) {
         peerConnection.close();
         peerConnection = null;
       }
       remoteVideo.srcObject = null;
     });
+
   })
   .catch(error => {
     console.error('Error accessing media devices:', error);
+    alert("Please allow access to camera and microphone.");
   });
 
+// Setup PeerConnection
 function setupPeerConnection() {
   if (peerConnection) {
     peerConnection.close();
@@ -82,6 +97,7 @@ function setupPeerConnection() {
   };
 }
 
+// Next button logic
 function connectNextUser() {
   if (peerConnection) {
     peerConnection.close();
@@ -90,6 +106,5 @@ function connectNextUser() {
 
   remoteVideo.srcObject = null;
   status.innerText = 'Connecting to a new user...';
-
   socket.emit('nextUser');
 }
