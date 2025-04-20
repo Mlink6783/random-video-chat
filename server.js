@@ -43,33 +43,7 @@ io.on('connection', socket => {
       waitingUser = null;
     }
   });
-  let socket = io();
-
-// Function to handle the "Next" button click
-function connectNextUser() {
-  // Send signal to server to connect with the next user
-  socket.emit('nextUser');
-  document.getElementById('status').textContent = "Connecting...";
-}
-
-// Handle incoming stream (remote user)
-socket.on('remoteStream', (stream) => {
-  const remoteVideo = document.getElementById('remoteVideo');
-  remoteVideo.srcObject = stream;
-  document.getElementById('status').textContent = "Connected!";
-});
-
-// Handle local stream (your video)
-navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-  .then((stream) => {
-    const localVideo = document.getElementById('localVideo');
-    localVideo.srcObject = stream;
-    socket.emit('joinRoom');
-  })
-  .catch((error) => {
-    console.log('Error accessing media devices:', error);
-  });
-
+  
 });
 
 const PORT = process.env.PORT || 3000;
