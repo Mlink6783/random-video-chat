@@ -71,6 +71,29 @@ io.on("connection", (socket) => {
     userPartners.delete(socket.id);
     waitingUsers.delete(socket.id);
   });
+  socket.on('signal', async data => {
+  console.log('Signal received:', data);
+
+  if (data.type === 'offer') {
+    createPeerConnection();
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    socket.emit('signal', { type: 'answer', answer });
+
+  } else if (data.type === 'answer') {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+
+  } else if (data.type === 'candidate') {
+    try {
+      await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+    } catch (e) {
+      console.error('Error adding ICE candidate:', e);
+    }
+  }
+});
 });
 
 const PORT = process.env.PORT || 3000;
