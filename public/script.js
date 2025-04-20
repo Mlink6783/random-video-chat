@@ -1,5 +1,6 @@
 const socket = io();
 let peerConnection;
+let localStream;
 
 const config = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -11,23 +12,19 @@ const status = document.getElementById('status');
 
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
   .then(stream => {
+    localStream = stream;
     localVideo.srcObject = stream;
+
+    socket.emit('joinRoom');
+
+    socket.on('waiting', () => {
+      status.innerText = 'Waiting for a partner...';
+    });
 
     socket.on('matched', async ({ partnerId }) => {
       status.innerText = 'Matched with: ' + partnerId;
-
-      peerConnection = new RTCPeerConnection(config);
-      stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
-
-      peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-          socket.emit('signal', { candidate: event.candidate });
-        }
-      };
-
-      peerConnection.ontrack = event => {
-        remoteVideo.srcObject = event.streams[0];
-      };
+      setupPeerConnection();
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
@@ -36,19 +33,8 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
 
     socket.on('signal', async data => {
       if (data.offer) {
-        peerConnection = new RTCPeerConnection(config);
-        stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
-
-        peerConnection.onicecandidate = event => {
-          if (event.candidate) {
-            socket.emit('signal', { candidate: event.candidate });
-          }
-        };
-
-        peerConnection.ontrack = event => {
-          remoteVideo.srcObject = event.streams[0];
-        };
-
+        setupPeerConnection();
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
         await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
@@ -65,40 +51,45 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     });
 
     socket.on('partnerDisconnected', () => {
-      status.innerText = 'Your partner has left. Refresh to match again.';
+      status.innerText = 'Your partner has left. Click "Next" to find a new one.';
       if (peerConnection) {
         peerConnection.close();
+        peerConnection = null;
       }
+      remoteVideo.srcObject = null;
     });
+  })
+  .catch(error => {
+    console.error('Error accessing media devices:', error);
+  });
 
-    socket.on('waiting', () => {
-      status.innerText = 'Waiting for a partner...';
-    });
-    let socket = io();
+function setupPeerConnection() {
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+  }
 
-// Function to handle the "Next" button click
-function connectNextUser() {
-  // Send signal to server to connect with the next user
-  socket.emit('nextUser');
-  document.getElementById('status').textContent = "Connecting...";
+  peerConnection = new RTCPeerConnection(config);
+
+  peerConnection.onicecandidate = event => {
+    if (event.candidate) {
+      socket.emit('signal', { candidate: event.candidate });
+    }
+  };
+
+  peerConnection.ontrack = event => {
+    remoteVideo.srcObject = event.streams[0];
+  };
 }
 
-// Handle incoming stream (remote user)
-socket.on('remoteStream', (stream) => {
-  const remoteVideo = document.getElementById('remoteVideo');
-  remoteVideo.srcObject = stream;
-  document.getElementById('status').textContent = "Connected!";
-});
+function connectNextUser() {
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+  }
 
-// Handle local stream (your video)
-navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-  .then((stream) => {
-    const localVideo = document.getElementById('localVideo');
-    localVideo.srcObject = stream;
-    socket.emit('joinRoom');
-  })
-  .catch((error) => {
-    console.log('Error accessing media devices:', error);
-  });
+  remoteVideo.srcObject = null;
+  status.innerText = 'Connecting to a new user...';
 
-  });
+  socket.emit('nextUser');
+}
