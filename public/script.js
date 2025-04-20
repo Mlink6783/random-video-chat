@@ -5,8 +5,8 @@ let remoteStream;
 
 const config = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' }
-     window.onload = function() {
+    { urls: 'stun:stun.l.google.com:19302' },
+    window.onload = function() {
          let xhr = new XMLHttpRequest();
          xhr.onreadystatechange = function($evt){
             if(xhr.readyState == 4 && xhr.status == 200){
