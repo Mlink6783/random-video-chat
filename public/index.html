@@ -1,69 +1,43 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Random Video Chat</title>
   <style>
     body {
-      margin: 0;
+      font-family: Arial;
       background: #111;
       color: white;
-      font-family: Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      height: 100vh;
-      overflow: hidden;
+      text-align: center;
     }
-
-    #videos {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 10px;
-      margin-top: 20px;
-    }
-
     video {
-      width: 320px;
-      height: 240px;
-      background: black;
-      border: 2px solid #444;
+      width: 45%;
+      margin: 10px;
       border-radius: 10px;
+      background: black;
     }
-
-    #status {
-      margin-top: 20px;
-      font-size: 18px;
-    }
-
-    #nextButton {
-      margin-top: 15px;
+    button {
       padding: 10px 20px;
-      font-size: 16px;
-      background: #00aaff;
+      margin-top: 20px;
+      background: #1e90ff;
       border: none;
       color: white;
-      border-radius: 8px;
+      font-size: 18px;
+      border-radius: 5px;
       cursor: pointer;
     }
-
-    #nextButton:hover {
-      background: #0077aa;
+    #status {
+      margin-top: 20px;
+      font-size: 20px;
     }
   </style>
 </head>
 <body>
   <h1>Random Video Chat</h1>
-  <div id="videos">
-    <video id="localVideo" autoplay muted playsinline></video>
-    <video id="remoteVideo" autoplay playsinline></video>
-  </div>
-  <div id="status">Connecting...</div>
-  <button id="nextButton" onclick="connectNextUser()">Next</button>
+  <video id="localVideo" autoplay muted playsinline></video>
+  <video id="remoteVideo" autoplay playsinline></video>
+  <p id="status">Connecting...</p>
+  <button onclick="connectNextUser()">Next</button>
 
-  <!-- Scripts -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="script.js"></script>
 </body>
