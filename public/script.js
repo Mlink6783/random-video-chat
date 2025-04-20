@@ -3,26 +3,45 @@ let peerConnection;
 let localStream;
 let remoteStream;
 
-const config = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' }
-  ]
-};
+// ICE server config will be fetched from Xirsys
+let config = { iceServers: [] };
 
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
 const status = document.getElementById('status');
 
-navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-  .then(stream => {
-    localStream = stream;
-    localVideo.srcObject = stream;
-    socket.emit('joinRoom');
-  })
-  .catch(error => {
-    console.error('🎥 Error accessing media devices:', error);
-    status.innerText = 'Media access error.';
-  });
+async function getXirsysIceServers() {
+  try {
+    const response = await fetch("https://global.xirsys.net/_turn/MyFirstApp", {
+      method: "PUT",
+      headers: {
+        "Authorization": "Basic " + btoa("Adrift1:78085408-1dcd-11f0-a558-0242ac130003"),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ format: "urls" })
+    });
+
+    const data = await response.json();
+    config.iceServers = data.v.iceServers;
+    startStream();
+  } catch (error) {
+    console.error("Failed to get Xirsys ICE servers:", error);
+    status.innerText = "TURN server error.";
+  }
+}
+
+function startStream() {
+  navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    .then(stream => {
+      localStream = stream;
+      localVideo.srcObject = stream;
+      socket.emit('joinRoom');
+    })
+    .catch(error => {
+      console.error('🎥 Error accessing media devices:', error);
+      status.innerText = 'Media access error.';
+    });
+}
 
 socket.on('waiting', () => {
   status.innerText = 'Waiting for a partner...';
@@ -99,3 +118,6 @@ function connectNextUser() {
   status.innerText = 'Connecting to a new user...';
   socket.emit('nextUser');
 }
+
+// Start the app by fetching ICE servers
+getXirsysIceServers();
