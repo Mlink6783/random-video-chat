@@ -24,6 +24,19 @@ const config = {
     }
   ]
 };
+window.onload = function() {
+         let xhr = new XMLHttpRequest();
+         xhr.onreadystatechange = function($evt){
+            if(xhr.readyState == 4 && xhr.status == 200){
+                let res = JSON.parse(xhr.responseText);
+                console.log("response: ",res);
+            }
+         }
+         xhr.open("PUT", "https://global.xirsys.net/_turn/MyFirstApp", true);
+         xhr.setRequestHeader ("Authorization": "Basic " + btoa("Adrift1:78085408-1dcd-11f0-a558-0242ac130003") );
+         xhr.setRequestHeader ("Content-Type": "application/json");
+         xhr.send( JSON.stringify({"format": "urls"}) );
+      }:
 
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
   .then(stream => {
